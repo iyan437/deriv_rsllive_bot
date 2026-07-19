@@ -43,9 +43,10 @@ async def connect_deriv_stream():
     global last_signal_time, consecutive_count, previous_digit
     
     # CORRECTED: Fully operational and formatted API path URL string
-    uri = f"wss://://derivws.com{APP_ID}" 
+        # Ensure there are no extra colons or slashes
+    uri = f"wss://://derivws.com{APP_ID}"
     
-    print(f"Connecting to live market data stream for {SYMBOL}...")
+      print(f"Connecting to live market data stream for {SYMBOL}...")
     
     async with websockets.connect(uri) as websocket:
         # Step 1: Authenticate the session
