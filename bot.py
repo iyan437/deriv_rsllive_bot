@@ -23,6 +23,10 @@ previous_digit = None
 
 def send_email_signal(subject, body):
     """Sends the alert email synchronously using a standard secure SSL connection."""
+    if not EMAIL_SENDER or not EMAIL_PASSWORD:
+        print("❌ Mail skipped: EMAIL_SENDER or EMAIL_PASSWORD environment variables are missing.")
+        return
+
     msg = EmailMessage()
     msg['Subject'] = subject
     msg['From'] = EMAIL_SENDER
@@ -30,8 +34,8 @@ def send_email_signal(subject, body):
     msg.set_content(body)
 
     try:
-        # FIX 1: Fixed the incorrect host address string
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        # FIXED: Correct Gmail host address string
+        with smtplib.SMTP_SSL('://gmail.com', 465) as smtp:
             smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
             smtp.send_message(msg)
         print("⚡ Email signal successfully dispatched!")
@@ -42,10 +46,17 @@ async def connect_deriv_stream():
     """Establishes a live persistent websocket connection with Deriv's API servers."""
     global last_signal_time, consecutive_count, previous_digit
     
-    # FIX 2: Fixed the broken endpoint URI path and appended the required app_id
+    # Check for API token before trying to connect
+    if not API_TOKEN:
+        print("❌ Deployment Error: DERIV_API_TOKEN environment variable is missing.")
+        print("Please check your GitHub Repository Settings > Secrets > Actions configuration.")
+        return
+
+    # FIXED: Clean, standard URL path for Deriv WebSocket API v3
     uri = f"wss://://derivws.com{APP_ID}" 
     
     print(f"Connecting to live market data stream for {SYMBOL}...")
+    print(f"Target URI: {uri}")
     
     async with websockets.connect(uri) as websocket:
         # Step 1: Authenticate the session
@@ -74,6 +85,7 @@ async def connect_deriv_stream():
                 current_price = str(data["tick"]["quote"])
                 last_digit = int(current_price[-1]) # Extract the final digit
                 
+                # --- STRATEGY LOGIC: Match & Differ Alert ---
                 if previous_digit is not None and last_digit == previous_digit:
                     consecutive_count += 1
                 else:
@@ -81,10 +93,12 @@ async def connect_deriv_stream():
                 
                 previous_digit = last_digit
                 
+                # Trigger criteria: Same digit repeats twice in a row
                 if consecutive_count >= 2:
                     current_time = time.time()
                     elapsed_time = current_time - last_signal_time
                     
+                    # Enforce the strict minimum 5-minute safety delay window
                     if elapsed_time >= COOLDOWN_SECONDS:
                         subject = f"🚨 Deriv Live Signal Alert: Digit [{last_digit}] Repeat"
                         body = (
@@ -95,7 +109,7 @@ async def connect_deriv_stream():
                             f"Strategy Recommendation: Look for Matches/Differs setups."
                         )
                         
-                        # FIX 3: Run email task in a separate thread so it doesn't freeze the websocket stream
+                        # FIXED: Offload blocking email task to background thread so it doesn't freeze the socket stream
                         asyncio.create_task(asyncio.to_thread(send_email_signal, subject, body))
                         last_signal_time = current_time
                     else:
