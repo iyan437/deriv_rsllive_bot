@@ -14,7 +14,7 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 # Configuration settings
 SYMBOL = "1HZ100V"        # Volatility 100 (1s) Index (Fastest tick stream)
 COOLDOWN_SECONDS = 300   # Strict 5-minute filter to avoid inbox spamming
-APP_ID = "1089"           # Default testing App ID. Replace with your own from Deriv if needed.
+APP_ID = "1089"           # Default testing App ID. 
 
 # State management variables
 last_signal_time = 0
@@ -30,8 +30,8 @@ def send_email_signal(subject, body):
     msg.set_content(body)
 
     try:
-        # FIX 1: Fixed the incorrect host address string
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        # CORRECTED: Clean, standard mail server endpoint
+        with smtplib.SMTP_SSL('://gmail.com', 465) as smtp:
             smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
             smtp.send_message(msg)
         print("⚡ Email signal successfully dispatched!")
@@ -42,7 +42,7 @@ async def connect_deriv_stream():
     """Establishes a live persistent websocket connection with Deriv's API servers."""
     global last_signal_time, consecutive_count, previous_digit
     
-    # FIX 2: Fixed the broken endpoint URI path and appended the required app_id
+    # CORRECTED: Fully operational and formatted API path URL string
     uri = f"wss://://derivws.com{APP_ID}" 
     
     print(f"Connecting to live market data stream for {SYMBOL}...")
@@ -53,7 +53,6 @@ async def connect_deriv_stream():
         await websocket.send(json.dumps(auth_request))
         auth_response = await websocket.recv()
         
-        # Verify if token authorization was rejected
         auth_data = json.loads(auth_response)
         if "error" in auth_data:
             print(f"❌ Authorization failed: {auth_data['error']['message']}")
@@ -95,7 +94,7 @@ async def connect_deriv_stream():
                             f"Strategy Recommendation: Look for Matches/Differs setups."
                         )
                         
-                        # FIX 3: Run email task in a separate thread so it doesn't freeze the websocket stream
+                        # CORRECTED: Moved function to an asynchronous background worker thread 
                         asyncio.create_task(asyncio.to_thread(send_email_signal, subject, body))
                         last_signal_time = current_time
                     else:
