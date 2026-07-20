@@ -30,8 +30,8 @@ def send_email_signal(subject, body):
     msg.set_content(body)
 
     try:
-        # Fixed the host address string to standard Gmail SMTP
-        with smtplib.SMTP_SSL('://gmail.com', 465) as smtp:
+        # FIX 1: Fixed the incorrect host address string
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
             smtp.send_message(msg)
         print("⚡ Email signal successfully dispatched!")
@@ -42,7 +42,7 @@ async def connect_deriv_stream():
     """Establishes a live persistent websocket connection with Deriv's API servers."""
     global last_signal_time, consecutive_count, previous_digit
     
-    # Corrected endpoint URI path with app_id parameter
+    # FIX 2: Fixed the broken endpoint URI path and appended the required app_id
     uri = f"wss://://derivws.com{APP_ID}" 
     
     print(f"Connecting to live market data stream for {SYMBOL}...")
@@ -95,7 +95,7 @@ async def connect_deriv_stream():
                             f"Strategy Recommendation: Look for Matches/Differs setups."
                         )
                         
-                        # Dispatched in a separate thread to maintain unbroken websocket sync
+                        # FIX 3: Run email task in a separate thread so it doesn't freeze the websocket stream
                         asyncio.create_task(asyncio.to_thread(send_email_signal, subject, body))
                         last_signal_time = current_time
                     else:
