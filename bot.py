@@ -2,59 +2,60 @@ import os
 import json
 import asyncio
 import websockets
-import smtplib
-from email.message import EmailMessage
 import time
+import urllib.request
 
 # Load secure credentials from GitHub Secrets
 API_TOKEN = os.environ.get("DERIV_API_TOKEN")
-EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
-# Configuration settings
-SYMBOL = "1HZ100V"        # Volatility 100 (1s) Index (Fastest tick stream)
-COOLDOWN_SECONDS = 300   # Strict 5-minute filter to avoid inbox spamming
-APP_ID = "1089"           # Default testing App ID. Replace with your own from Deriv if needed.
+# PIPEDREAM CONFIGURATION: Paste your unique Pipedream Webhook URL here
+PIPEDREAM_WEBHOOK_URL = "https://eou42nuld2hd1p1.m.pipedream.net"
+
+# Strategy Settings
+SYMBOL = "1HZ100V"        # Volatility 100 (1s) Index
+COOLDOWN_SECONDS = 300   # 5-minute safety cooldown
 
 # State management variables
 last_signal_time = 0
 consecutive_count = 0
 previous_digit = None
 
-def send_email_signal(subject, body):
-    """Sends the alert email synchronously using a standard secure SSL connection."""
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = EMAIL_SENDER
-    msg['To'] = EMAIL_SENDER
-    msg.set_content(body)
-
+def trigger_pipedream_alert(last_digit, count, price):
+    """Sends the trigger payload to your Pipedream workflow endpoint using standard urllib."""
+    payload = {
+        "asset": SYMBOL,
+        "pattern": f"Digit {last_digit} repeated {count} times in a row.",
+        "price": price,
+        "recommendation": "Look for Matches/Differs setups."
+    }
+    
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        PIPEDREAM_WEBHOOK_URL, 
+        data=data, 
+        headers={'Content-Type': 'application/json'}
+    )
+    
     try:
-        # FIX 1: Fixed the incorrect host address string
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            smtp.send_message(msg)
-        print("⚡ Email signal successfully dispatched!")
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200 or response.status == 201:
+                print("🚀 Signal pushed to Pipedream successfully!")
     except Exception as e:
-        print(f"❌ Mail delivery failed: {e}")
+        print(f"❌ Failed to reach Pipedream: {e}")
 
 async def connect_deriv_stream():
     """Establishes a live persistent websocket connection with Deriv's API servers."""
     global last_signal_time, consecutive_count, previous_digit
     
-    # FIX 2: Fixed the broken endpoint URI path and appended the required app_id
-    uri = f"wss://://derivws.com{APP_ID}" 
-    
+    uri = "wss://ws.derivws.com/websockets/v3" 
     print(f"Connecting to live market data stream for {SYMBOL}...")
     
     async with websockets.connect(uri) as websocket:
         # Step 1: Authenticate the session
-        auth_request = {"authorize": API_TOKEN}
-        await websocket.send(json.dumps(auth_request))
+        await websocket.send(json.dumps({"authorize": API_TOKEN}))
         auth_response = await websocket.recv()
-        
-        # Verify if token authorization was rejected
         auth_data = json.loads(auth_response)
+        
         if "error" in auth_data:
             print(f"❌ Authorization failed: {auth_data['error']['message']}")
             return
@@ -62,17 +63,16 @@ async def connect_deriv_stream():
         print("Session Authentication: Complete")
 
         # Step 2: Subscribe to real-time tick streaming data
-        subscribe_request = {"ticks": SYMBOL}
-        await websocket.send(json.dumps(subscribe_request))
+        await websocket.send(json.dumps({"ticks": SYMBOL}))
         print(f"Live subscription active. Analyzing streaming ticks...")
 
-        # Step 3: Listen to live ticks continuously as they stream in
+        # Step 3: Listen to live ticks continuously
         async for message in websocket:
             data = json.loads(message)
             
             if "tick" in data:
                 current_price = str(data["tick"]["quote"])
-                last_digit = int(current_price[-1]) # Extract the final digit
+                last_digit = int(current_price[-1]) 
                 
                 if previous_digit is not None and last_digit == previous_digit:
                     consecutive_count += 1
@@ -86,24 +86,10 @@ async def connect_deriv_stream():
                     elapsed_time = current_time - last_signal_time
                     
                     if elapsed_time >= COOLDOWN_SECONDS:
-                        subject = f"🚨 Deriv Live Signal Alert: Digit [{last_digit}] Repeat"
-                        body = (
-                            f"Live Market Event Detected!\n\n"
-                            f"Asset: {SYMBOL}\n"
-                            f"Pattern: Digit {last_digit} repeated {consecutive_count} times in a row.\n"
-                            f"Price Context: {current_price}\n\n"
-                            f"Strategy Recommendation: Look for Matches/Differs setups."
-                        )
-                        
-                        # FIX 3: Run email task in a separate thread so it doesn't freeze the websocket stream
-                        asyncio.create_task(asyncio.to_thread(send_email_signal, subject, body))
+                        # Offload the HTTP request to Pipedream to keep websocket alive
+                        print(f"🎯 Pattern Found! Digit {last_digit} repeated.")
+                        asyncio.to_thread(trigger_pipedream_alert, last_digit, consecutive_count, current_price)
                         last_signal_time = current_time
                     else:
                         remaining = int(COOLDOWN_SECONDS - elapsed_time)
-                        print(f"Signal suppressed. Cooldown active for {remaining} more seconds.")
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(connect_deriv_stream())
-    except KeyboardInterrupt:
-        print("Bot session terminated by user.")
+                        print(f"Signal suppressed. Cooldown active for {remaining} seconds.")
