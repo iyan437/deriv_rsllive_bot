@@ -1,12 +1,10 @@
-# Deriv Advanced Hybrid Bot V2.1 - Server Edition
+# Deriv Advanced Hybrid Bot V2.0
+Auto-switches between Matches/Differs + Trend + Time + Risk
 
-24/7 Hybrid trading signal bot for Deriv Volatility Indices.
-Features: Auto Switcher, Trend Filter, Time Filter, Risk Manager, Email Alerts
+### Pydroid Setup
+`pip install websockets pytz`
+1. Create `config.py` and add your keys
+2. Run: `python hybrid_deriv_bot_v2.py`
 
-## 1. Setup
-```bash
-git clone https://github.com/yourname/deriv-hybrid-bot-advanced
-cd deriv-hybrid-bot-advanced
-pip install -r requirements.txt
-cp config.py.example config.py
-nano config.py # Add your keys
+### Email Commands
+Reply to signal email with `WIN` or `LOSS` to manually track. Bot will auto-pause after 2 losses.
